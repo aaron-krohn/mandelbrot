@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 ###
 # According to Wikipedia:
 #
@@ -70,72 +72,170 @@
 #
 #   - 2nd zoom level distorts image, not working as expected 
 #
-# TODO
-#
-#   - Add argparse flags
 ###
 
 from PIL import Image
 import pandas as pd
 import numpy as np
-import cmath
+import argparse
+import logging
 import time
+import re
 
-iters = 200
+def coords(arg_value):
+    """ Validates the value passed for coordinates """
 
-zoom_level = 2
-zoom_factor = 2
-zoom_center = (1365, 595) 
+    pat = re.compile(r'^[0-9]+,[0-9]+$')
 
-Re_res = 3000
-Im_res = int((Re_res / 3.0) * 2)
+    if not pat.match(arg_value):
+        raise argparse.ArgumentTypeError('Invalid coordinate format')
 
-Re_lim = (1, -2)
-Im_lim = (1, -1)
+    return tuple(map(int, arg_value.split(',')))
 
-for z in range(zoom_level):
+def loglevel(arg_value):
+    """ Validates log level value """
 
-    # Absolute size of Re and Im
-    Re_abs = abs(Re_lim[0]) + abs(Re_lim[1])
-    Im_abs = abs(Im_lim[0]) + abs(Im_lim[1])
+    if not hasattr(logging, arg_value):
+        raise argparse.ArgumentTypeError('Invalid log level')
 
-    # Location of zoom_center, translated from pixels to graph values
-    Re_cen = ((zoom_center[0] / Re_res) * Re_abs) + Re_lim[1]
-    Im_cen = ((zoom_center[1] / Im_res) * Im_abs) + Im_lim[1]
+    return getattr(logging, arg_value)
 
-    # Absolute lengths of new viewport
-    Re_new = Re_abs / zoom_factor
-    Im_new = Im_abs / zoom_factor
+def parse_args():
 
-    # With center of new viewport on the center
-    Re_lim = (Re_cen + (Re_new / 2), Re_cen - (Re_new / 2))
-    Im_lim = (Im_cen + (Im_new / 2), Im_cen - (Im_new / 2))
+    parser = argparse.ArgumentParser()
 
-Re_incr = (abs(Re_lim[0]) + abs(Re_lim[1])) / float(Re_res)
-Im_incr = (abs(Im_lim[0]) + abs(Im_lim[1])) / float(Im_res)
+    parser.add_argument('-i', '--iterations', dest='iters', action='store',
+        help='Maximum number of iterations per pixel to determine boundedness',
+        default=200, type=int)
 
-Re_pix = []
-Im_pix = []
+    parser.add_argument('-l', '--zoom-level', dest='zoom_level', action='store',
+        help='Number of times to zoom in', default=0, type=int)
 
-for Im in [Im_lim[1] + (Im_incr * y) for y in range(1, Im_res + 1)]:
-    for Re in [Re_lim[1] + (Re_incr * x) for x in range(1, Re_res + 1)]:
+    parser.add_argument('-z', '--zoom-factor', dest='zoom_factor', action='store',
+        help='Size of the area to zoom, relative to total render size. The larger the number, the smalled the area that is zoomed.',
+        default=0, type=int)
 
-        c = complex(Re, Im)
-        z = complex(0,0)
+    parser.add_argument('-c', '--zoom-center', dest='zoom_center', action='store',
+        help='The y,x coordinates of the center of zoom location.',
+        default='0,0', metavar='Y,X', type=coords)
 
-        for i in range(iters):
-            z = (z * z) + c
-            if z.imag > 2.0 or z.real > 2.0:
-                break
+    parser.add_argument('-r', '--resolution', dest='re_res', action='store',
+        help='Horizontal resolution in pixels. Assumes 3:2 aspect ratio.',
+        default=3000, type=int)
 
-        Im_pix.append(True if z.imag < 2.0 else False)
-        Re_pix.append(True if z.real < 2.0 else False)
+    parser.add_argument('-v', '--height', dest='im_res', action='store',
+        help='Vertical resolution when desired aspect ratio is not 3:2',
+        default=None, type=int)
 
-Im_pix = np.array(Im_pix, dtype=bool)
-Re_pix = np.array(Re_pix, dtype=bool)
+    parser.add_argument('-f', '--file', dest='outfile', action='store',
+        help='File location to write the frame to', default='frame.png')
 
-pixels = Im_pix & Re_pix
-pixels = pixels.reshape((Im_res, Re_res))
+    parser.add_argument('-g', '--log-level', dest='loglevel', action='store',
+        help='Log level: [DEBUG|INFO|WARNING|ERROR|CRITICAL]', default='INFO',
+        type=loglevel)
 
-im = Image.fromarray(pixels)
-im.save('mandelbrot.png')
+    args = parser.parse_args()
+
+    return args
+
+if __name__ == '__main__':
+
+    start = time.time()
+
+    args = parse_args()
+
+    logging.basicConfig(level=args.loglevel, format='%(asctime)s %(message)s')
+    logger = logging.getLogger()
+
+    logger.info('Initializing Mandelbrot explorer')
+
+    iters = args.iters
+    
+    zoom_level = args.zoom_level
+    zoom_factor = args.zoom_factor
+    zoom_center = args.zoom_center
+
+    Re_res = args.re_res
+    if args.im_res is None:
+        Im_res = int((2 * Re_res) / 3)
+    else:
+        Im_res = args.im_res
+
+    Re_lim = (1, -2)
+    Im_lim = (1, -1)
+
+    Re_len = abs(Re_lim[0] - Re_lim[1])
+    Im_len = abs(Im_lim[0] - Im_lim[1])
+
+    Re_incr = Re_len / Re_res
+    Im_incr = Im_len / Im_res
+
+    logger.info('Zooming to: Level %s @ %sx, centered at %s', zoom_level, zoom_factor, zoom_center)
+
+    for z in range(zoom_level):
+
+        ad = Re_res / zoom_factor
+        Re_min = Re_lim[1] + ((zoom_center[0] - (ad / 2)) * Re_incr)
+        Re_max = Re_lim[0] - (((Re_res - zoom_center[0]) - (ad / 2)) * Re_incr)
+
+        logger.debug('Re_min: %s + ((%s - (%s / 2)) * %s)', Re_lim[1], zoom_center[0], ad, Re_incr)
+        logger.debug('Re_max: %s - (((%s - %s) - (%s / 2)) * %s)', Re_lim[0], Re_res, zoom_center[0], ad, Re_incr)
+
+        ab = Im_res / zoom_factor
+        Im_min = Im_lim[1] + ((zoom_center[1] - (ab / 2)) * Im_incr)
+        Im_max = Im_lim[0] - (((Im_res - zoom_center[1]) - (ab / 2)) * Im_incr)
+
+        logger.debug('Im_min: %s + ((%s - (%s / 2)) * %s)', Im_lim[1], zoom_center[1], ab, Im_incr)
+        logger.debug('Im_max: %s - (((%s - %s) - (%s / 2)) * %s)', Im_lim[0], Im_res, zoom_center[1], ab, Im_incr)
+
+        Re_lim = (Re_max, Re_min)
+        Im_lim = (Im_max, Im_min)
+
+        Re_len = abs(Re_lim[0] - Re_lim[1])
+        Im_len = abs(Im_lim[0] - Im_lim[1])
+    
+        Re_incr = Re_len / Re_res
+        Im_incr = Im_len / Im_res
+
+        # After the first iteration of zoom, the frame is now centered about
+        # the original zoom center, so we adjust to continue zooming to the
+        # center of the frame in order to continue zooming on the desired pixel
+        zoom_center = (int(Re_res / 2), int(Im_res / 2))
+
+    pixels = []
+
+    logger.info('Re bounds: %s', Re_lim)
+    logger.info('Im bounds: %s', Im_lim)
+    logger.info('Re increment: %s', Re_incr)
+    logger.info('Im increment: %s', Im_incr)
+
+    ratio = 255 / iters
+    for Im in [Im_lim[1] + (Im_incr * y) for y in range(1, Im_res + 1)]:
+        for Re in [Re_lim[1] + (Re_incr * x) for x in range(1, Re_res + 1)]:
+    
+            c = complex(Re, Im)
+            z = complex(0,0)
+            count = 0
+
+            for i in range(iters):
+                z = (z * z) + c
+                count += 1
+                if z.imag > 2.0 or z.real > 2.0:
+                    break
+
+            if count > iters:
+                app = 255
+            else:
+                app = int(255 * (count / iters))
+
+            pixels.append([app, app, app])
+    
+    pixels = np.array(pixels, dtype=np.uint8)
+    pixels = pixels.reshape((Im_res, Re_res, 3))
+
+    logger.info('Writing image data to %s', args.outfile)
+    im = Image.fromarray(pixels)
+    im.save(args.outfile)
+
+    end = time.time()
+    logger.info('Frame rendering complete in %s seconds', (end - start))
