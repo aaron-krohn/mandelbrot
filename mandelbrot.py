@@ -68,9 +68,14 @@
 # the pixels in the side. The faster the 'z' value goes out of bounds, the
 # closer the color is to an outside pixel.
 #
-# Bugs
+# TODO:
 #
-#   - 2nd zoom level distorts image, not working as expected 
+#   - Implement "zoom path", a series of zoom center pixel coordinates
+#   - Add some color, make gradients easy
+#   - Convert to class
+#   - Make it fast
+#   - Function to convert pixels to graph coords
+#   - Create graph overlay
 #
 ###
 
@@ -174,26 +179,33 @@ if __name__ == '__main__':
 
     for z in range(zoom_level):
 
+        # The length of line ad, the top of the new bounding box
         ad = Re_res / zoom_factor
+        # Calculate the new bounds of the real axis, centered about zoom_center
         Re_min = Re_lim[1] + ((zoom_center[0] - (ad / 2)) * Re_incr)
         Re_max = Re_lim[0] - (((Re_res - zoom_center[0]) - (ad / 2)) * Re_incr)
 
         logger.debug('Re_min: %s + ((%s - (%s / 2)) * %s)', Re_lim[1], zoom_center[0], ad, Re_incr)
         logger.debug('Re_max: %s - (((%s - %s) - (%s / 2)) * %s)', Re_lim[0], Re_res, zoom_center[0], ad, Re_incr)
 
+        # The length of line ab, the left side of new bounding box
         ab = Im_res / zoom_factor
+        # Calculate the new bounds of the imaginary axis, centered about zoom_center
         Im_min = Im_lim[1] + ((zoom_center[1] - (ab / 2)) * Im_incr)
         Im_max = Im_lim[0] - (((Im_res - zoom_center[1]) - (ab / 2)) * Im_incr)
 
         logger.debug('Im_min: %s + ((%s - (%s / 2)) * %s)', Im_lim[1], zoom_center[1], ab, Im_incr)
         logger.debug('Im_max: %s - (((%s - %s) - (%s / 2)) * %s)', Im_lim[0], Im_res, zoom_center[1], ab, Im_incr)
 
+        # Update bounds
         Re_lim = (Re_max, Re_min)
         Im_lim = (Im_max, Im_min)
 
+        # Calculate length of each axis
         Re_len = abs(Re_lim[0] - Re_lim[1])
         Im_len = abs(Im_lim[0] - Im_lim[1])
-    
+
+        # Calculate the graph-size of each pixel
         Re_incr = Re_len / Re_res
         Im_incr = Im_len / Im_res
 
@@ -202,39 +214,55 @@ if __name__ == '__main__':
         # center of the frame in order to continue zooming on the desired pixel
         zoom_center = (int(Re_res / 2), int(Im_res / 2))
 
-    pixels = []
-
     logger.info('Re bounds: %s', Re_lim)
     logger.info('Im bounds: %s', Im_lim)
     logger.info('Re increment: %s', Re_incr)
     logger.info('Im increment: %s', Im_incr)
 
+    logger.info('Initializing c values for frame')
+    cdata = np.zeros((Im_res, Re_res), dtype=np.complex_)
+    for yidx, y in enumerate(range(1, Im_res + 1)):
+        for xidx, x in enumerate(range(1, Re_res + 1)):
+
+            # Calculates the value of c for each pixel on the graph
+            cdata[yidx,xidx] = complex(Re_lim[1] + (Re_incr * x), Im_lim[1] + (Im_incr * y))
+
+    brot = lambda z, c: (z * z) + c
+    pixels = np.full((Im_res, Re_res), complex(0,0))
+
+    logger.info('Iterating z values')
+    for i in range(iters):
+
+        prev_pixels = np.copy(pixels)
+        pixels = np.where(
+            np.logical_and(
+                pixels.real < 2.0, pixels.imag < 2.0
+            ),
+            brot(pixels, cdata),
+            pixels + complex(i,i)
+        )
+
+        if np.array_equal(prev_pixels, pixels):
+            break
+
+    logger.info('Rendering complete after %s iterations', i+1)
+    logger.info('Generating image data')
+
     ratio = 255 / iters
-    for Im in [Im_lim[1] + (Im_incr * y) for y in range(1, Im_res + 1)]:
-        for Re in [Re_lim[1] + (Re_incr * x) for x in range(1, Re_res + 1)]:
-    
-            c = complex(Re, Im)
-            z = complex(0,0)
-            count = 0
+    img_data = np.zeros((Im_res, Re_res, 3), dtype=np.uint8)
 
-            for i in range(iters):
-                z = (z * z) + c
-                count += 1
-                if z.imag > 2.0 or z.real > 2.0:
-                    break
+    for yidx, y in enumerate(pixels):
+        for xidx, x in enumerate(y):
 
-            if count > iters:
-                app = 255
+            if x.real >= 2.0 or x.imag >= 2.0:
+                val = int((x.real / iters) * 255)
+                val = 1.0 if val > 1.0 else val
+                img_data[yidx][xidx] = [val] * 3
             else:
-                app = int(255 * (count / iters))
+                img_data[yidx][xidx] = (255,255,255)
 
-            pixels.append([app, app, app])
-    
-    pixels = np.array(pixels, dtype=np.uint8)
-    pixels = pixels.reshape((Im_res, Re_res, 3))
-
-    logger.info('Writing image data to %s', args.outfile)
-    im = Image.fromarray(pixels)
+    logger.info('Writing image to %s', args.outfile)
+    im = Image.fromarray(img_data)
     im.save(args.outfile)
 
     end = time.time()
