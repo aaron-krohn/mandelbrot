@@ -80,7 +80,7 @@
 ###
 
 from PIL import Image
-import pandas as pd
+from matplotlib import cm
 import numpy as np
 import argparse
 import logging
@@ -154,18 +154,26 @@ if __name__ == '__main__':
 
     logger.info('Initializing Mandelbrot explorer')
 
+    # Iterations
     iters = args.iters
-    
+ 
+    # Zoom settings
     zoom_level = args.zoom_level
     zoom_factor = args.zoom_factor
     zoom_center = args.zoom_center
 
+    # Colors
+    color_bound = 50
+    color_unbound = 200
+
+    # Image resolution for each axis
     Re_res = args.re_res
     if args.im_res is None:
         Im_res = int((2 * Re_res) / 3)
     else:
         Im_res = args.im_res
 
+    # Upper and lower bounds of each axis
     Re_lim = (1, -2)
     Im_lim = (1, -1)
 
@@ -227,42 +235,42 @@ if __name__ == '__main__':
             # Calculates the value of c for each pixel on the graph
             cdata[yidx,xidx] = complex(Re_lim[1] + (Re_incr * x), Im_lim[1] + (Im_incr * y))
 
+    # This simple lambda function is responsible for the magic
     brot = lambda z, c: (z * z) + c
+    # Array of z values to be manipulated
     pixels = np.full((Im_res, Re_res), complex(0,0))
+    unbound = np.zeros((Im_res, Re_res))
 
     logger.info('Iterating z values')
     for i in range(iters):
 
-        prev_pixels = np.copy(pixels)
+        # All bounded values are contained within 2.0+2.0j, -2.0-2.0j
         pixels = np.where(
             np.logical_and(
-                pixels.real < 2.0, pixels.imag < 2.0
+                pixels.real <= 2.0,
+                pixels.imag <= 2.0
             ),
             brot(pixels, cdata),
-            pixels + complex(i,i)
+            pixels
         )
 
-        if np.array_equal(prev_pixels, pixels):
-            break
+        unbound = np.where(
+            np.logical_or(
+                pixels.real >= 2.0,
+                pixels.imag >= 2.0
+            ),
+            unbound + 1,
+            unbound
+         )
+                
 
     logger.info('Rendering complete after %s iterations', i+1)
     logger.info('Generating image data')
 
-    ratio = 255 / iters
-    img_data = np.zeros((Im_res, Re_res, 3), dtype=np.uint8)
-
-    for yidx, y in enumerate(pixels):
-        for xidx, x in enumerate(y):
-
-            if x.real >= 2.0 or x.imag >= 2.0:
-                val = int((x.real / iters) * 255)
-                val = 1.0 if val > 1.0 else val
-                img_data[yidx][xidx] = [val] * 3
-            else:
-                img_data[yidx][xidx] = (255,255,255)
+    img_data = (unbound / iters) * 255
 
     logger.info('Writing image to %s', args.outfile)
-    im = Image.fromarray(img_data)
+    im = Image.fromarray(np.uint8(img_data))
     im.save(args.outfile)
 
     end = time.time()
