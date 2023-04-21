@@ -1,12 +1,20 @@
 # Mandelbrot
 
-Python library used to explore the Mandelbrot set
+Draws images of the Mandelbrot set. There are much faster ways of doing this.
 
 # Setup 
 
 ```
 pip install -r requirements.txt
 ```
+
+# Quickstart
+
+```
+./mandelbrot.py --iterations 100 --zoom-level 0 --zoom-center 0,0 --resolution 3000 --file mb_1.png --log-level DEBUG
+```
+
+Note: If the resolution isn't 3000, you're gonna have a bad time. Round numbers according to current ratio only!
 
 # Usage
 

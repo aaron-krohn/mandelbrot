@@ -11,7 +11,7 @@
 # The objective, then, is to determine, for each pixel, whether or not it
 # is "within the [Mandelbrot] set".
 #
-# To determine if a given pixel is "in", 
+# To determine if a given pixel is "in",
 #
 #    Thus, a complex number c is a member of the Mandelbrot set if,
 #    when starting with z0 = 0 and applying the iteration repeatedly,
@@ -24,10 +24,10 @@
 #    z_{n+1}=z_{n}^{2}+c} remains bounded.
 #
 # So how do we know if it's "bounded" or not?
-# 
-#    For example, for c = 1, the sequence is 0, 1, 2, 5, 26, ..., 
+#
+#    For example, for c = 1, the sequence is 0, 1, 2, 5, 26, ...,
 #    which tends to infinity, so 1 is not an element of the Mandelbrot set.
-#    On the other hand, for c = −1, the sequence is 0, −1, 0, −1, 0, ..., 
+#    On the other hand, for c = −1, the sequence is 0, −1, 0, −1, 0, ...,
 #    which is bounded, so −1 does belong to the set.
 #
 # I think we could probably check boundedness by plugging in a number that
@@ -38,8 +38,8 @@
 #
 # That we can do.
 #
-# The image resolution needs to be known, and has a 3:2 ratio. 
-# 
+# The image resolution needs to be known, and has a 3:2 ratio.
+#
 # So we can the assign each pixel two float values for the coordinates,
 # equal to: Im = viewport_width / x_resolution.
 #
@@ -195,7 +195,7 @@ class Mandelbrot():
         )
 
         for z in range(self.zoom['level']):
-    
+
             # The length of line ab, and ad, the left and top edges
             # of the new viewport bounding box
             ab = self.res['im'] / self.zoom['factor']
@@ -207,7 +207,7 @@ class Mandelbrot():
 
             re_max = self.bounds['re'][0] - (((self.res['re'] - self.zoom['center'][0]) - (ad / 2)) * self.incr['re'])
             im_max = self.bounds['im'][0] - (((self.res['im'] - self.zoom['center'][1]) - (ab / 2)) * self.incr['im'])
-    
+
             self.set_bounds(re_min=re_min, re_max=re_max, im_min=im_min, im_max=im_max)
 
             # Calculate length of each axis
@@ -215,7 +215,7 @@ class Mandelbrot():
 
             # Calculate the graph-size of each pixel
             self.calc_increments()
-    
+
             # After the first iteration of zoom, the frame is now centered about
             # the original zoom center, so we adjust to continue zooming to the
             # center of the frame in order to continue zooming on the desired pixel
@@ -282,7 +282,7 @@ class Mandelbrot():
 
         logger.debug('bounds[re]: (%s, %s)', self.bounds['re'][0], self.bounds['re'][1])
         logger.debug('bounds[im]: (%s, %s)', self.bounds['im'][0], self.bounds['im'][1])
-          
+
 
     def set_resolution(self, re_res, im_res=None):
 
@@ -395,7 +395,7 @@ if __name__ == '__main__':
 
     # Iterations
     m.iterations = args.iters
- 
+
     # Colors
     m.gradient = [50, 200]
 
