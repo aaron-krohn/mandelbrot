@@ -51,3 +51,7 @@ optional arguments:
 https://en.wikipedia.org/wiki/Mandelbrot_set
 
 https://fractaltodesktop.com/mandelbrot-set-basics/index.html
+
+# Example
+
+![Mandelbrot zero](./mb_1.png?raw=true)
